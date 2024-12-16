@@ -632,3 +632,135 @@ class MapVisualizer:
             return self.create_base_map(['boundaries'])
 
 
+
+    def create_data_coverage_map(self, static_readings, mobile_readings, static_sensors):
+        """Create a map showing areas where sensor data exists vs where it's missing"""
+        print("\n=== Creating Data Coverage Map ===")
+        
+        try:
+            # Create base map
+            fig = self.create_base_map(['boundaries'])
+            
+            if self.gdf is not None:
+                bounds = self.gdf.total_bounds
+                
+                # Increase grid size for better performance and coverage visualization
+                grid_size = 0.002  # Approximately 200m
+                x_grid = np.arange(bounds[0], bounds[2], grid_size)
+                y_grid = np.arange(bounds[1], bounds[3], grid_size)
+                
+                # Create a coverage matrix
+                coverage_matrix = np.zeros((len(y_grid), len(x_grid)))
+                
+                # Mark covered areas from static sensors with larger radius
+                if static_sensors is not None:
+                    for _, sensor in static_sensors.iterrows():
+                        x_idx = np.abs(x_grid - sensor[DataProcessor.LONGITUDE]).argmin()
+                        y_idx = np.abs(y_grid - sensor[DataProcessor.LATITUDE]).argmin()
+                        
+                        # Increase coverage radius to 500m for static sensors
+                        radius = int(0.005 / grid_size)
+                        y_indices, x_indices = np.ogrid[-radius:radius+1, -radius:radius+1]
+                        circle = x_indices**2 + y_indices**2 <= radius**2
+                        
+                        y_start = max(0, y_idx - radius)
+                        y_end = min(coverage_matrix.shape[0], y_idx + radius + 1)
+                        x_start = max(0, x_idx - radius)
+                        x_end = min(coverage_matrix.shape[1], x_idx + radius + 1)
+                        
+                        sub_circle = circle[
+                            max(0, radius - y_idx):min(2*radius + 1, coverage_matrix.shape[0] - y_idx + radius),
+                            max(0, radius - x_idx):min(2*radius + 1, coverage_matrix.shape[1] - x_idx + radius)
+                        ]
+                        coverage_matrix[y_start:y_end, x_start:x_end][sub_circle] = 1
+                
+                # Increase sample size for mobile readings
+                if mobile_readings is not None:
+                    sample_size = min(50000, len(mobile_readings))  # Increased sample size
+                    mobile_sample = mobile_readings.sample(n=sample_size)
+                    
+                    for _, reading in mobile_sample.iterrows():
+                        x_idx = np.abs(x_grid - reading[DataProcessor.LONGITUDE]).argmin()
+                        y_idx = np.abs(y_grid - reading[DataProcessor.LATITUDE]).argmin()
+                        
+                        # Increase coverage radius to 300m for mobile readings
+                        radius = int(0.003 / grid_size)
+                        y_indices, x_indices = np.ogrid[-radius:radius+1, -radius:radius+1]
+                        circle = x_indices**2 + y_indices**2 <= radius**2
+                        
+                        y_start = max(0, y_idx - radius)
+                        y_end = min(coverage_matrix.shape[0], y_idx + radius + 1)
+                        x_start = max(0, x_idx - radius)
+                        x_end = min(coverage_matrix.shape[1], x_idx + radius + 1)
+                        
+                        sub_circle = circle[
+                            max(0, radius - y_idx):min(2*radius + 1, coverage_matrix.shape[0] - y_idx + radius),
+                            max(0, radius - x_idx):min(2*radius + 1, coverage_matrix.shape[1] - x_idx + radius)
+                        ]
+                        coverage_matrix[y_start:y_end, x_start:x_end][sub_circle] = 1
+                
+                # Convert to points
+                uncovered_points = []
+                covered_points = []
+                
+                for i, y in enumerate(y_grid):
+                    for j, x in enumerate(x_grid):
+                        point = Point(x, y)
+                        if any(point.within(geom) for geom in self.gdf.geometry):
+                            if coverage_matrix[i, j] == 0:
+                                uncovered_points.append([x, y])
+                            else:
+                                covered_points.append([x, y])
+                
+                # Add covered areas first (green)
+                if covered_points:
+                    covered_points = np.array(covered_points)
+                    fig.add_trace(go.Densitymapbox(
+                        lat=covered_points[:, 1],
+                        lon=covered_points[:, 0],
+                        z=np.ones(len(covered_points)),
+                        radius=50,  # Increased radius for better visibility
+                        colorscale=[[0, 'rgba(0,255,0,0)'], [1, 'rgba(0,255,0,0.5)']],
+                        name='Sensor Coverage',
+                        showscale=False,
+                        hoverinfo='skip'
+                    ))
+                
+                # Add uncovered areas (red)
+                if uncovered_points:
+                    uncovered_points = np.array(uncovered_points)
+                    fig.add_trace(go.Scattermapbox(
+                        lon=uncovered_points[:, 0],
+                        lat=uncovered_points[:, 1],
+                        mode='markers',
+                        marker=dict(
+                            size=5,
+                            color='red',
+                            opacity=0.7
+                        ),
+                        name='No Sensor Coverage'
+                    ))
+            
+            # Update layout
+            fig.update_layout(
+                showlegend=True,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01,
+                    bgcolor="rgba(255,255,255,0.8)"
+                ),
+                mapbox=dict(
+                    style="carto-positron",
+                    zoom=11
+                )
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"ERROR creating coverage map: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return self.create_base_map(['boundaries'])

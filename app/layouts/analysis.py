@@ -130,6 +130,12 @@ def create_analysis_layout(data_processor):
             ], width=12)
         ]),
         
+        dbc.Row([
+            dbc.Col([
+                create_coverage_analysis_card()
+            ], width=12)
+        ]),
+        
         # Store for timeline data
         dcc.Store(id='timeline-data'),
         # Store for animation state
@@ -184,3 +190,29 @@ def create_affected_areas_card():
     ], className="mb-3")
 
 
+def create_coverage_analysis_card():
+    return dbc.Card([
+        dbc.CardHeader("Data Coverage Analysis", className="fw-bold"),
+        dbc.CardBody([
+            dbc.Row([
+                dbc.Col([
+                    # Simple map showing data coverage
+                    dcc.Graph(
+                        id='coverage-map',
+                        style={'height': '70vh'},
+                        config={'displayModeBar': True}
+                    ),
+                ], width=12),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    html.Div([
+                        html.P([
+                            "Red dots indicate areas with no sensor readings. ",
+                            "Green shading shows areas where data has been collected."
+                        ], className="mt-3 text-muted")
+                    ])
+                ], width=12),
+            ]),
+        ])
+    ], className="mb-3")

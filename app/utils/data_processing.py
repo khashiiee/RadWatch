@@ -2,6 +2,8 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import geopandas as gpd
+from shapely.geometry import Point
 
 class DataProcessor:
     # Class-level constants for standardized column names
@@ -19,6 +21,15 @@ class DataProcessor:
         self.mobile_readings = None
         self.start_date = None
         self.end_date = None
+        self.gdf = None
+        
+        try:
+            self.gdf = gpd.read_file('../data/StHimarkNeighborhoodShapefile/StHimark.shp')
+            if self.gdf.crs != 'EPSG:4326':
+                self.gdf = self.gdf.to_crs('EPSG:4326')
+        except Exception as e:
+            print(f"Warning: Could not load neighborhood shapefile: {str(e)}")
+            self.gdf = None
         
     def load_data(self):
         """Load all data sources"""
@@ -180,3 +191,65 @@ class DataProcessor:
         df['is_anomaly'] = abs(df[self.VALUE] - df['rolling_mean']) > (threshold * df['rolling_std'])
         return df[df['is_anomaly']]
     
+    
+    def calculate_coverage_stats(self, static_sensors, mobile_readings):
+        """Calculate statistics about actual data coverage across neighborhoods"""
+        try:
+            if self.gdf is None:
+                return {
+                    'total_neighborhoods': 0,
+                    'covered_neighborhoods': 0,
+                    'uncovered_neighborhoods': 0,
+                    'coverage_percentage': 0
+                }
+                
+            total_neighborhoods = len(self.gdf)
+            neighborhoods_with_data = set()
+            
+            # Check actual reading locations, not just sensor positions
+            if static_sensors is not None:
+                static_readings = pd.merge(
+                    static_sensors,
+                    self.static_readings,
+                    on=self.SENSOR_ID
+                )
+                
+                for _, reading in static_readings.iterrows():
+                    point = Point(reading[self.LONGITUDE], reading[self.LATITUDE])
+                    for idx, neighborhood in self.gdf.iterrows():
+                        if point.within(neighborhood.geometry):
+                            neighborhoods_with_data.add(neighborhood.get('Nbrhood', str(idx)))
+            
+            if mobile_readings is not None:
+                for _, reading in mobile_readings.iterrows():
+                    point = Point(reading[self.LONGITUDE], reading[self.LATITUDE])
+                    for idx, neighborhood in self.gdf.iterrows():
+                        if point.within(neighborhood.geometry):
+                            neighborhoods_with_data.add(neighborhood.get('Nbrhood', str(idx)))
+            
+            num_covered = len(neighborhoods_with_data)
+            coverage_pct = (num_covered / total_neighborhoods * 100) if total_neighborhoods > 0 else 0
+            
+            # Get list of neighborhoods without data
+            all_neighborhoods = set(self.gdf['Nbrhood'].values)
+            uncovered_neighborhoods = all_neighborhoods - neighborhoods_with_data
+            
+            return {
+                'total_neighborhoods': total_neighborhoods,
+                'covered_neighborhoods': num_covered,
+                'uncovered_neighborhoods': total_neighborhoods - num_covered,
+                'coverage_percentage': coverage_pct,
+                'neighborhoods_without_data': sorted(list(uncovered_neighborhoods))
+            }
+            
+        except Exception as e:
+            print(f"Error calculating coverage statistics: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return {
+                'total_neighborhoods': 0,
+                'covered_neighborhoods': 0,
+                'uncovered_neighborhoods': 0,
+                'coverage_percentage': 0,
+                'neighborhoods_without_data': []
+            }

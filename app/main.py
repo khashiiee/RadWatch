@@ -2,7 +2,7 @@
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from utils.data_processing import DataProcessor
 from layouts.overview import create_overview_layout
 from layouts.analysis import create_analysis_layout  # Add this import
@@ -251,6 +251,70 @@ def update_affected_areas_analysis(threshold_range, start_date, end_date):
     return fig, stats_html
 
 
+
+
+# Add info panel toggle callback
+# app/callbacks/analysis_callbacks.py
+
+@app.callback(
+    Output('coverage-map', 'figure'),
+    [Input('analysis-date-range', 'start_date'),
+     Input('analysis-date-range', 'end_date')]
+)
+def update_coverage_analysis(start_date, end_date):
+    """Update the coverage analysis map"""
+    print("\n=== Coverage Analysis Callback Triggered ===")
+    print(f"Date range: {start_date} to {end_date}")
+    
+    try:
+        # Filter data for time period
+        filtered_static = data_processor.filter_time_range(
+            data_processor.static_readings,
+            start_date,
+            end_date
+        )
+        filtered_mobile = data_processor.filter_time_range(
+            data_processor.mobile_readings,
+            start_date,
+            end_date
+        )
+        
+        print(f"\nFiltered data stats:")
+        print(f"Static readings: {len(filtered_static)} records")
+        print(f"Mobile readings: {len(filtered_mobile)} records")
+        
+        # Create map
+        map_viz = MapVisualizer()
+        return map_viz.create_data_coverage_map(
+            filtered_static,
+            filtered_mobile,
+            data_processor.static_sensors
+        )
+        
+    except Exception as e:
+        print(f"ERROR in coverage analysis callback: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        map_viz = MapVisualizer()
+        return map_viz.create_base_map(['boundaries'])
+
+def create_error_message_map(message):
+    """Create a map with an error message overlay"""
+    fig = go.Figure(go.Scattermapbox())
+    fig.update_layout(
+        annotations=[
+            dict(
+                text=f"Error: {message}",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=16, color="red")
+            )
+        ]
+    )
+    return fig
 
 if __name__ == '__main__':
     app.run_server(debug=True)
