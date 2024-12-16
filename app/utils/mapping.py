@@ -240,7 +240,7 @@ class MapVisualizer:
             return fig
         
     def add_animated_radiation_data(self, fig, readings, sensors, sensor_type, time_agg, animation_speed, active_layers):
-        """Add animated radiation visualization for either static or mobile sensors"""
+        """Add animated radiation visualization for either static or mobile sensors with improved heatmap handling"""
         try:
             # Prepare data
             if sensor_type == 'static':
@@ -260,17 +260,17 @@ class MapVisualizer:
                 DataProcessor.LONGITUDE
             ])[DataProcessor.VALUE].agg(['mean', 'count']).reset_index()
                         
-
             # Create frames for animation
             frames = []
             timestamps = sorted(time_groups[DataProcessor.TIMESTAMP].unique())
             
             for timestamp in timestamps:
                 frame_data = time_groups[time_groups[DataProcessor.TIMESTAMP] == timestamp]
-                      
-                # Add sensor markers
+                    
+                # Add sensor markers and heatmap
                 traces = []
                 
+                # Add sensor markers
                 if sensor_type == 'static' and 'static' in active_layers:
                     traces.append(go.Scattermapbox(
                         lat=frame_data[DataProcessor.LATITUDE],
@@ -296,33 +296,55 @@ class MapVisualizer:
                         name='Mobile Sensors'
                     ))
                 
-                # Add heatmap layer
+                # Add appropriate heatmap layer
                 if f'{sensor_type}_heatmap' in active_layers:
+                    heatmap_settings = {
+                        'static': {
+                            'radius': 75,
+                            'colorscale': 'Viridis',
+                            'name': 'Static Radiation Levels',
+                            'opacity': 0.6,
+                            'colorbar_x': 1.02 if 'mobile_heatmap' in active_layers else 1.0,
+                            'below': '' if 'mobile_heatmap' not in active_layers else 'traces'
+                        },
+                        'mobile': {
+                            'radius': 60,
+                            'colorscale': 'Plasma',
+                            'name': 'Mobile Radiation Levels',
+                            'opacity': 0.6,
+                            'colorbar_x': 1.1 if 'static_heatmap' in active_layers else 1.0,
+                            'below': None
+                        }
+                    }[sensor_type]
+                    
                     traces.append(go.Densitymapbox(
                         lat=frame_data[DataProcessor.LATITUDE],
                         lon=frame_data[DataProcessor.LONGITUDE],
                         z=frame_data['mean'],
-                        radius=75,
-                        colorscale='Viridis',
-                        name=f'{sensor_type.title()} Radiation Level',
+                        radius=heatmap_settings['radius'],
+                        colorscale=heatmap_settings['colorscale'],
+                        name=heatmap_settings['name'],
                         hovertemplate=(
-                            "<b>Radiation Level</b><br>" +
+                            f"<b>{sensor_type.title()} Radiation Level</b><br>" +
                             "Value: %{z:.2f} cpm<br>" +
                             "Lat: %{lat:.4f}<br>" +
                             "Lon: %{lon:.4f}<extra></extra>"
                         ),
                         colorbar=dict(
                             title=dict(
-                                text='Radiation Level (cpm)',
+                                text=f'{sensor_type.title()} Radiation (cpm)',
                                 side='right'
                             ),
                             thickness=15,
                             len=0.7,
-                            tickformat='.1f'
+                            tickformat='.1f',
+                            x=heatmap_settings['colorbar_x']
                         ),
-                        opacity=0.7,
+                        opacity=heatmap_settings['opacity'],
+                        showscale=True,
                         zmin=time_groups['mean'].min(),
-                        zmax=time_groups['mean'].max()
+                        zmax=time_groups['mean'].max(),
+                        below=heatmap_settings['below']
                     ))
                 
                 frames.append(go.Frame(
@@ -336,16 +358,16 @@ class MapVisualizer:
                     fig.add_trace(trace)
             
             # Update layout with animation controls
-            frame_duration = int(1000 / animation_speed)  # Adjust speed
+            frame_duration = int(1000 / animation_speed)
             fig.frames = frames
             fig.update_layout(
                 updatemenus=[{
                     'type': 'buttons',
-                    'direction': 'left',  # Align buttons horizontally
-                    'showactive': True,  
+                    'direction': 'left',
+                    'showactive': False,
                     'x': 0.1,
                     'y': 1.2,
-                    'pad': {'r': 10, 'l': 10, 't': 0, 'b': 0},  # Add padding between buttons
+                    'pad': {'r': 10, 'l': 10, 't': 0, 'b': 0},
                     'buttons': [
                         {
                             'args': [None, {
@@ -353,9 +375,8 @@ class MapVisualizer:
                                 'fromcurrent': True,
                                 'transition': {'duration': 30}
                             }],
-                            'label': '▶️',  # Unicode play symbol
-                            'method': 'animate',
-                            'visible': True
+                            'label': '▶️',
+                            'method': 'animate'
                         },
                         {
                             'args': [[None], {
@@ -363,13 +384,11 @@ class MapVisualizer:
                                 'mode': 'immediate',
                                 'transition': {'duration': 0}
                             }],
-                            'label': '⏸️',  # Unicode pause symbol
-                            'method': 'animate',
-                            'visible': True
+                            'label': '⏸️',
+                            'method': 'animate'
                         }
                     ]
                 }],
-                # Improved slider styling
                 sliders=[{
                     'currentvalue': {
                         'prefix': 'Time: ',
@@ -377,11 +396,11 @@ class MapVisualizer:
                         'xanchor': 'right',
                         'font': {'size': 14, 'color': '#666'}
                     },
-                    'pad': {'t': 0, 'b':10},  # Add padding above slider
-                    'len': 0.9,  # Make slider longer
-                    'x': 0.05,  # Align with buttons
+                    'pad': {'t': 0, 'b': 10},
+                    'len': 0.9,
+                    'x': 0.05,
                     'xanchor': 'left',
-                    'y': 1.17,  # Position below buttons
+                    'y': 1.17,
                     'yanchor': 'top',
                     'steps': [{
                         'args': [[f.name], {
@@ -390,14 +409,11 @@ class MapVisualizer:
                             'transition': {'duration': 0}
                         }],
                         'label': f.name,
-                        'method': 'animate',
-                        'visible': True
+                        'method': 'animate'
                     } for f in frames],
                     'transition': {'duration': 300, 'easing': 'cubic-in-out'}
                 }]
             )
-            
-            
             
             return fig
             
