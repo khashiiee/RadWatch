@@ -156,7 +156,7 @@ def create_affected_areas_card():
                     dcc.RangeSlider(
                         id='radiation-threshold',
                         min=0,
-                        max=100,
+                        max=80,
                         step=10,
                         value=[50, 60],  # Default range
                         marks={

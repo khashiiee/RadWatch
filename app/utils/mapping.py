@@ -500,8 +500,8 @@ class MapVisualizer:
                         ),
                         opacity=0.7,
                         showscale=True,
-                        zmin=threshold_range[0],
-                        zmax=threshold_range[1]
+                        zmin=0,
+                        zmax=80
                     ))
                     
                     print(f"Successfully created affected areas visualization")
