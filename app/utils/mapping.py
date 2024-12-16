@@ -71,14 +71,6 @@ class MapVisualizer:
                             lons += list(poly_lons) + [None]
                             lats += list(poly_lats) + [None]
                     
-                        if 'Palace Hills' in str(row.get('Nbrhood', '')):
-                            print("\n=== Palace Hills Geometry Debug ===")
-                            print(f"Geometry type: {row.geometry.type}")
-                            print(f"Valid geometry: {row.geometry.is_valid}")
-                            print(f"Geometry bounds: {row.geometry.bounds}")
-
-
-                    
                     # Add boundary lines
                     fig.add_trace(go.Scattermapbox(
                         lon=lons,
@@ -248,8 +240,34 @@ class MapVisualizer:
             return fig
         
     def add_animated_radiation_data(self, fig, readings, sensors, sensor_type, time_agg, animation_speed, active_layers):
-        """Add animated radiation visualization for either static or mobile sensors"""
+        """Add animated radiation visualization with fixed boundary handling"""
         try:
+            # Debug existing traces
+            print("\nDEBUG: Examining existing traces")
+            for i, trace in enumerate(fig.data):
+                if trace.mode == 'lines':
+                    print(f"Trace {i}: mode={trace.mode}, name={trace.name}, points={len(trace.lon) if trace.lon else 0}")
+
+            # Extract boundary traces more carefully
+            boundary_traces = []
+            for trace in fig.data:
+                if trace.mode == 'lines' or trace.mode == 'text':
+                    # Create a complete copy of the trace
+                    new_trace = go.Scattermapbox(
+                        lon=trace.lon[:] if trace.lon else None,  # Explicit copy
+                        lat=trace.lat[:] if trace.lat else None,  # Explicit copy
+                        mode=trace.mode,
+                        line=trace.line,
+                        name=trace.name,
+                        text=trace.text,
+                        textfont=trace.textfont,
+                        hoverinfo=trace.hoverinfo,
+                        showlegend=trace.showlegend
+                    )
+                    boundary_traces.append(new_trace)
+                    
+            print(f"\nDEBUG: Extracted {len(boundary_traces)} boundary traces")
+            
             # Prepare data
             if sensor_type == 'static':
                 data = pd.merge(
@@ -268,25 +286,38 @@ class MapVisualizer:
                 DataProcessor.LONGITUDE
             ])[DataProcessor.VALUE].agg(['mean', 'count']).reset_index()
             
-            # Get the base traces (neighborhood boundaries) from the original figure
-            base_traces = [trace for trace in fig.data if trace.name and 'Neighborhood' in trace.name]
-            
-            print("\n=== Debugging Traces ===")
-            for i, trace in enumerate(fig.data):
-                if trace.name and 'Neighborhood' in trace.name:
-                    print(f"Trace {i}: {trace.name}")
-                    print(f"Lon points: {len(trace.lon) if trace.lon is not None else 'None'}")
-                    print(f"Lat points: {len(trace.lat) if trace.lat is not None else 'None'}")
-
             # Create frames for animation
             frames = []
             timestamps = sorted(time_groups[DataProcessor.TIMESTAMP].unique())
             
-            for timestamp in timestamps:
+            for idx, timestamp in enumerate(timestamps):
                 frame_data = time_groups[time_groups[DataProcessor.TIMESTAMP] == timestamp]
                 
-                # Add sensor markers
+                # Create new traces list starting with boundaries
                 traces = []
+                for boundary_trace in boundary_traces:
+                    # Create a fresh copy for each frame
+                    trace_copy = go.Scattermapbox(
+                        lon=boundary_trace.lon[:] if boundary_trace.lon else None,
+                        lat=boundary_trace.lat[:] if boundary_trace.lat else None,
+                        mode=boundary_trace.mode,
+                        line=boundary_trace.line,
+                        name=boundary_trace.name,
+                        text=boundary_trace.text,
+                        textfont=boundary_trace.textfont,
+                        hoverinfo=boundary_trace.hoverinfo,
+                        showlegend=boundary_trace.showlegend
+                    )
+                    traces.append(trace_copy)
+                
+                # Debug first frame boundary traces
+                if idx == 0:
+                    print(f"\nDEBUG: Frame {idx} has {len(traces)} boundary traces")
+                    for i, trace in enumerate(traces):
+                        if trace.mode == 'lines':
+                            print(f"Frame {idx} Trace {i}: points={len(trace.lon) if trace.lon else 0}")
+                
+                # Add sensor markers
                 if sensor_type == 'static' and 'static' in active_layers:
                     traces.append(go.Scattermapbox(
                         lat=frame_data[DataProcessor.LATITUDE],
@@ -331,14 +362,14 @@ class MapVisualizer:
                     name=timestamp.strftime('%Y-%m-%d %H:%M')
                 ))
             
-            # Add initial frame data to figure
-            if frames:
-                for trace in frames[0].data:
-                    fig.add_trace(trace)
+            # Ensure original figure maintains all boundary traces
+            fig.data = boundary_traces + [trace for trace in fig.data 
+                                        if trace not in boundary_traces and trace.mode != 'lines']
             
             # Update layout with animation controls
-            frame_duration = int(1000 / animation_speed)  # Adjust speed
+            frame_duration = int(1000 / animation_speed)
             fig.frames = frames
+            
             fig.update_layout(
                 updatemenus=[{
                     'type': 'buttons',
@@ -385,7 +416,7 @@ class MapVisualizer:
             )
             
             return fig
-            
+                
         except Exception as e:
             print(f"ERROR in animated visualization: {str(e)}")
             import traceback
