@@ -188,5 +188,69 @@ def create_stats_display(stats):
         ])
     ])
 
+@app.callback(
+    [Output('affected-areas-map', 'figure'),
+     Output('affected-areas-stats', 'children')],
+    [Input('radiation-threshold', 'value'),
+     Input('analysis-date-range', 'start_date'),
+     Input('analysis-date-range', 'end_date')]
+)
+def update_affected_areas_analysis(threshold_range, start_date, end_date):
+    """Update the affected areas map and statistics based on the threshold range"""
+    # Filter data for the selected time period
+    filtered_static = data_processor.filter_time_range(
+        data_processor.static_readings,
+        start_date,
+        end_date
+    )
+    filtered_mobile = data_processor.filter_time_range(
+        data_processor.mobile_readings,
+        start_date,
+        end_date
+    )
+    
+    # Create map
+    map_viz = MapVisualizer()
+    fig = map_viz.create_affected_areas_map(
+        filtered_mobile,
+        threshold_range,
+        static_sensors=data_processor.static_sensors
+    )
+    
+    # Calculate statistics
+    min_threshold, max_threshold = threshold_range
+    static_affected = filtered_static[
+        (filtered_static[DataProcessor.VALUE] >= min_threshold) & 
+        (filtered_static[DataProcessor.VALUE] <= max_threshold)
+    ]
+    mobile_affected = filtered_mobile[
+        (filtered_mobile[DataProcessor.VALUE] >= min_threshold) & 
+        (filtered_mobile[DataProcessor.VALUE] <= max_threshold)
+    ]
+    
+    stats_html = html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H5(f"Radiation Levels: {min_threshold} - {max_threshold} cpm"),
+                html.P([
+                    html.Strong("Static Sensors: "),
+                    f"{len(static_affected[DataProcessor.SENSOR_ID].unique())} affected sensors",
+                ]),
+                html.P([
+                    html.Strong("Mobile Readings: "),
+                    f"{len(mobile_affected)} readings in range",
+                ]),
+                html.P([
+                    html.Strong("Average Radiation: "),
+                    f"{mobile_affected[DataProcessor.VALUE].mean():.2f} cpm",
+                ]),
+            ])
+        ])
+    ])
+    
+    return fig, stats_html
+
+
+
 if __name__ == '__main__':
     app.run_server(debug=True)

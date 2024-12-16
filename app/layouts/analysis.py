@@ -124,6 +124,12 @@ def create_analysis_layout(data_processor):
             ], width=12, className="mt-3")
         ]),
         
+        dbc.Row([
+            dbc.Col([
+                create_affected_areas_card()
+            ], width=12)
+        ]),
+        
         # Store for timeline data
         dcc.Store(id='timeline-data'),
         # Store for animation state
@@ -131,3 +137,50 @@ def create_analysis_layout(data_processor):
         # Interval for animation
         dcc.Interval(id='animation-interval', interval=1000, disabled=True)
     ], fluid=True)
+    
+
+
+def create_affected_areas_card():
+    return dbc.Card([
+        dbc.CardHeader("Affected Areas Analysis", className="fw-bold"),
+        dbc.CardBody([
+            dbc.Row([
+                dbc.Col([
+                    html.Label("Radiation Range (cpm):", className="fw-bold mb-2"),
+                    dcc.RangeSlider(
+                        id='radiation-threshold',
+                        min=0,
+                        max=2000,
+                        step=100,
+                        value=[500, 1000],  # Default range
+                        marks={
+                            0: '0',
+                            500: '500',
+                            1000: '1000',
+                            1500: '1500',
+                            2000: '2000'
+                        },
+                        className="mb-4",
+                        tooltip={"placement": "bottom", "always_visible": True}
+                    ),
+                ], width=12),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    # Affected areas map
+                    dcc.Graph(
+                        id='affected-areas-map',
+                        style={'height': '50vh'},
+                        config={'displayModeBar': True}
+                    ),
+                ], width=12),
+            ]),
+            dbc.Row([
+                dbc.Col([
+                    html.Div(id='affected-areas-stats', className="mt-3")
+                ], width=12),
+            ]),
+        ])
+    ], className="mb-3")
+
+

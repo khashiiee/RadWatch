@@ -97,3 +97,59 @@ def update_timestamp_display(slider_value, timeline_data):
     if 0 <= slider_value < len(timeline_data):
         return f"Current Time: {timeline_data[slider_value]}"
     return "No data available"
+
+
+@app.callback(
+    [Output('affected-areas-map', 'figure'),
+     Output('affected-areas-stats', 'children')],
+    [Input('radiation-threshold', 'value'),
+     Input('analysis-date-range', 'start_date'),
+     Input('analysis-date-range', 'end_date')]
+)
+def update_affected_areas_analysis(threshold, start_date, end_date):
+    """Update the affected areas map and statistics based on the threshold"""
+    # Filter data for the selected time period
+    filtered_static = data_processor.filter_time_range(
+        data_processor.static_readings,
+        start_date,
+        end_date
+    )
+    filtered_mobile = data_processor.filter_time_range(
+        data_processor.mobile_readings,
+        start_date,
+        end_date
+    )
+    
+    # Create map
+    map_viz = MapVisualizer()
+    fig = map_viz.create_affected_areas_map(
+        filtered_mobile,
+        threshold,
+        static_sensors=data_processor.static_sensors
+    )
+    
+    # Calculate statistics
+    static_affected = filtered_static[filtered_static[DataProcessor.VALUE] >= threshold]
+    mobile_affected = filtered_mobile[filtered_mobile[DataProcessor.VALUE] >= threshold]
+    
+    stats_html = html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H5("Affected Areas Statistics"),
+                html.P([
+                    html.Strong("Static Sensors: "),
+                    f"{len(static_affected[DataProcessor.SENSOR_ID].unique())} affected sensors",
+                ]),
+                html.P([
+                    html.Strong("Mobile Readings: "),
+                    f"{len(mobile_affected)} readings above threshold",
+                ]),
+                html.P([
+                    html.Strong("Peak Radiation: "),
+                    f"{max(static_affected[DataProcessor.VALUE].max() if len(static_affected) > 0 else 0, mobile_affected[DataProcessor.VALUE].max() if len(mobile_affected) > 0 else 0):.2f} cpm",
+                ]),
+            ])
+        ])
+    ])
+    
+    return fig, stats_html

@@ -179,3 +179,4 @@ class DataProcessor:
         
         df['is_anomaly'] = abs(df[self.VALUE] - df['rolling_mean']) > (threshold * df['rolling_std'])
         return df[df['is_anomaly']]
+    

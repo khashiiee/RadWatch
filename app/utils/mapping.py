@@ -422,3 +422,213 @@ class MapVisualizer:
             import traceback
             print(traceback.format_exc())
             return fig
+        
+
+    def create_affected_areas_map(self, readings, threshold_range, static_sensors=None):
+        """
+        Create a map showing areas affected by radiation within specified range
+        threshold_range: tuple of (min_threshold, max_threshold)
+        """
+        print("\n=== Creating Affected Areas Map ===")
+        print(f"Threshold Range: {threshold_range[0]} - {threshold_range[1]} cpm")
+        
+        try:
+            # Create base map with boundaries
+            fig = self.create_base_map(['boundaries'])
+            
+            # Prepare data
+            all_readings = []
+            
+            # Process mobile readings
+            if readings is not None:
+                mobile_data = readings[
+                    (readings[DataProcessor.VALUE] >= threshold_range[0]) & 
+                    (readings[DataProcessor.VALUE] <= threshold_range[1])
+                ].copy()
+                all_readings.append(mobile_data)
+                print(f"Mobile readings in range: {len(mobile_data)}")
+                
+            # Process static readings if provided
+            if static_sensors is not None:
+                static_data = pd.merge(
+                    readings,
+                    static_sensors,
+                    on=DataProcessor.SENSOR_ID,
+                    how='inner'
+                )
+                static_data = static_data[
+                    (static_data[DataProcessor.VALUE] >= threshold_range[0]) & 
+                    (static_data[DataProcessor.VALUE] <= threshold_range[1])
+                ]
+                all_readings.append(static_data)
+                print(f"Static readings in range: {len(static_data)}")
+                
+            # Combine all readings
+            if all_readings:
+                combined_data = pd.concat(all_readings, ignore_index=True)
+                
+                if len(combined_data) > 0:
+                    # Normalize values for color scaling
+                    norm_values = (combined_data[DataProcessor.VALUE] - threshold_range[0]) / (threshold_range[1] - threshold_range[0])
+                    
+                    # Add heatmap layer
+                    fig.add_trace(go.Densitymapbox(
+                        lat=combined_data[DataProcessor.LATITUDE],
+                        lon=combined_data[DataProcessor.LONGITUDE],
+                        z=combined_data[DataProcessor.VALUE],
+                        radius=75,
+                        colorscale=[
+                            [0, 'rgba(255,255,0,0.5)'],     # Yellow for lower bound
+                            [0.5, 'rgba(255,165,0,0.5)'],   # Orange for middle
+                            [1, 'rgba(255,0,0,0.5)']        # Red for upper bound
+                        ],
+                        name='Affected Areas',
+                        hovertemplate=(
+                            "<b>Radiation Level</b><br>" +
+                            "Value: %{z:.2f} cpm<br>" +
+                            "Lat: %{lat:.4f}<br>" +
+                            "Lon: %{lon:.4f}<extra></extra>"
+                        ),
+                        colorbar=dict(
+                            title=dict(
+                                text='Radiation Level (cpm)',
+                                side='right'
+                            ),
+                            thickness=15,
+                            len=0.7,
+                            tickformat='.1f'
+                        ),
+                        opacity=0.7,
+                        showscale=True,
+                        zmin=threshold_range[0],
+                        zmax=threshold_range[1]
+                    ))
+                    
+                    print(f"Successfully created affected areas visualization")
+                else:
+                    print("No readings in specified range")
+            
+            return fig
+            
+        except Exception as e:
+            print(f"ERROR creating affected areas map: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return self.create_base_map(['boundaries'])
+
+
+    def create_coverage_map(self, static_sensors, mobile_readings, coverage_radius=200):
+        """Create a map showing areas with and without actual sensor readings"""
+        print("\n=== Creating Data Coverage Analysis Map ===")
+        
+        try:
+            # Create base map
+            fig = self.create_base_map(['boundaries'])
+            
+            # Combine all readings with locations
+            all_readings = []
+            
+            # Process static sensor readings
+            if static_sensors is not None:
+                static_locs = pd.merge(
+                    static_sensors[[DataProcessor.SENSOR_ID, DataProcessor.LATITUDE, DataProcessor.LONGITUDE]],
+                    data_processor.static_readings[[DataProcessor.SENSOR_ID, DataProcessor.VALUE]],
+                    on=DataProcessor.SENSOR_ID,
+                    how='inner'
+                )
+                all_readings.append(static_locs)
+                
+            # Process mobile readings
+            if mobile_readings is not None:
+                mobile_locs = mobile_readings[[
+                    DataProcessor.LATITUDE, 
+                    DataProcessor.LONGITUDE, 
+                    DataProcessor.VALUE
+                ]].copy()
+                all_readings.append(mobile_locs)
+                
+            combined_readings = pd.concat(all_readings, ignore_index=True)
+            
+            # Add neighborhood boundaries with gap highlighting
+            if self.gdf is not None:
+                for _, row in self.gdf.iterrows():
+                    if row.geometry.type == 'Polygon':
+                        coords = row.geometry.exterior.coords
+                        lons, lats = zip(*coords)
+                        
+                        # Check if neighborhood has readings
+                        neighborhood_poly = row.geometry
+                        has_readings = False
+                        
+                        for _, reading in combined_readings.iterrows():
+                            point = Point(reading[DataProcessor.LONGITUDE], reading[DataProcessor.LATITUDE])
+                            if point.within(neighborhood_poly):
+                                has_readings = True
+                                break
+                        
+                        # Color code based on data presence
+                        fill_color = 'rgba(255,255,255,0)' if has_readings else 'rgba(255,0,0,0.2)'
+                        hover_text = (f"<b>{row.get('Nbrhood', 'Unknown')}</b><br>" +
+                                    "Has sensor readings" if has_readings else "No sensor readings recorded")
+                        
+                        fig.add_trace(go.Scattermapbox(
+                            lon=list(lons),
+                            lat=list(lats),
+                            fill='toself',
+                            fillcolor=fill_color,
+                            line=dict(width=1, color='rgba(70,70,70,0.8)'),
+                            name='Area with Data' if has_readings else 'No Data Recorded',
+                            showlegend=True,
+                            hovertemplate=hover_text + "<extra></extra>"
+                        ))
+            
+            # Add heatmap of actual readings
+            if len(combined_readings) > 0:
+                fig.add_trace(go.Densitymapbox(
+                    lat=combined_readings[DataProcessor.LATITUDE],
+                    lon=combined_readings[DataProcessor.LONGITUDE],
+                    z=np.ones(len(combined_readings)),
+                    radius=coverage_radius/2,  # Smaller radius for actual coverage
+                    colorscale=[[0, 'rgba(0,0,255,0)'], [1, 'rgba(0,0,255,0.3)']],
+                    name='Sensor Reading Locations',
+                    hoverinfo='none',
+                    showscale=False
+                ))
+            
+            # Add sensor points
+            if static_sensors is not None:
+                fig.add_trace(go.Scattermapbox(
+                    lat=static_sensors[DataProcessor.LATITUDE],
+                    lon=static_sensors[DataProcessor.LONGITUDE],
+                    mode='markers',
+                    marker=dict(size=8, color='red'),
+                    name='Static Sensors',
+                    text=static_sensors[DataProcessor.SENSOR_ID],
+                    hovertemplate="<b>Static Sensor</b><br>ID: %{text}<extra></extra>"
+                ))
+            
+            # Update layout
+            fig.update_layout(
+                showlegend=True,
+                legend=dict(
+                    yanchor="top",
+                    y=0.99,
+                    xanchor="left",
+                    x=0.01,
+                    bgcolor="rgba(255,255,255,0.8)"
+                ),
+                mapbox=dict(
+                    style="carto-positron",
+                    zoom=11
+                )
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"ERROR creating coverage map: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return self.create_base_map(['boundaries'])
+
+
