@@ -1,4 +1,3 @@
-# app/utils/data_processing.py
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -6,7 +5,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 
 class DataProcessor:
-    # Class-level constants for standardized column names
+    # Class-level constants
     SENSOR_ID = 'sensor_id'
     TIMESTAMP = 'timestamp'
     USER_ID = 'user_id'
@@ -14,6 +13,11 @@ class DataProcessor:
     UNITS = 'units'
     LATITUDE = 'latitude'
     LONGITUDE = 'longitude'
+    
+    # Data cleaning constants
+    MIN_VALID_VALUE = 0.0  # Minimum valid radiation reading
+    MAX_VALID_VALUE = 100.0  # Maximum valid radiation reading
+    MAX_RATE_OF_CHANGE = 50.0  # Maximum allowed change between consecutive readings
     
     def __init__(self):
         self.static_sensors = None
@@ -30,37 +34,99 @@ class DataProcessor:
         except Exception as e:
             print(f"Warning: Could not load neighborhood shapefile: {str(e)}")
             self.gdf = None
+
+    def clean_radiation_data(self, df):
+        """
+        Clean radiation readings by removing anomalies and invalid values
         
+        Args:
+            df (pd.DataFrame): DataFrame containing radiation readings
+            
+        Returns:
+            pd.DataFrame: Cleaned DataFrame
+        """
+        if df is None or len(df) == 0:
+            return df
+            
+        cleaned = df.copy()
+        
+        # Remove readings outside valid range
+        mask = (cleaned[self.VALUE] >= self.MIN_VALID_VALUE) & \
+               (cleaned[self.VALUE] <= self.MAX_VALID_VALUE)
+        
+        invalid_count = len(cleaned) - mask.sum()
+        if invalid_count > 0:
+            print(f"Removed {invalid_count} readings outside valid range ({self.MIN_VALID_VALUE}-{self.MAX_VALID_VALUE})")
+        
+        cleaned = cleaned[mask]
+        
+        # Sort by sensor and timestamp for rate-of-change calculation
+        cleaned = cleaned.sort_values([self.SENSOR_ID, self.TIMESTAMP])
+        
+        # Calculate rate of change for each sensor
+        cleaned['value_diff'] = cleaned.groupby(self.SENSOR_ID)[self.VALUE].diff()
+        
+        # Remove readings with excessive rate of change
+        mask = abs(cleaned['value_diff']) <= self.MAX_RATE_OF_CHANGE
+        
+        spike_count = len(cleaned) - mask.sum()
+        if spike_count > 0:
+            print(f"Removed {spike_count} readings with excessive rate of change (>{self.MAX_RATE_OF_CHANGE})")
+        
+        cleaned = cleaned[mask]
+        
+        # Remove the temporary column
+        cleaned = cleaned.drop('value_diff', axis=1)
+        
+        # Remove statistical outliers using IQR method
+        Q1 = cleaned[self.VALUE].quantile(0.25)
+        Q3 = cleaned[self.VALUE].quantile(0.75)
+        IQR = Q3 - Q1
+        outlier_mask = (cleaned[self.VALUE] >= Q1 - 1.5 * IQR) & \
+                      (cleaned[self.VALUE] <= Q3 + 1.5 * IQR)
+        
+        outlier_count = len(cleaned) - outlier_mask.sum()
+        if outlier_count > 0:
+            print(f"Removed {outlier_count} statistical outliers")
+        
+        cleaned = cleaned[outlier_mask]
+        
+        print(f"Final clean dataset contains {len(cleaned)} readings")
+        return cleaned
+
     def load_data(self):
-        """Load all data sources"""
+        """Load and clean all data sources"""
         try:
-            # Load data with relative paths
+            # Load raw data
             self.static_sensors = pd.read_csv('../data/StaticSensorLocations.csv')
             self.static_readings = pd.read_csv('../data/StaticSensorReadings.csv')
             self.mobile_readings = pd.read_csv('../data/MobileSensorReadings.csv')
             
-            # Print original column names for debugging
-            print("Static sensors columns:", self.static_sensors.columns)
-            print("Static readings columns:", self.static_readings.columns)
-            print("Mobile readings columns:", self.mobile_readings.columns)
-            
             # Standardize column names
             self.standardize_column_names()
             
-            print("\nStandardized column names:")
-            print("Static sensors:", self.static_sensors.columns)
-            print("Static readings:", self.static_readings.columns)
-            print("Mobile readings:", self.mobile_readings.columns)
-            
-            # Convert timestamp columns to datetime
+            # Convert timestamps
             self.static_readings[self.TIMESTAMP] = pd.to_datetime(self.static_readings[self.TIMESTAMP])
             self.mobile_readings[self.TIMESTAMP] = pd.to_datetime(self.mobile_readings[self.TIMESTAMP])
             
-            # Set the time range
-            self.start_date = self.static_readings[self.TIMESTAMP].min()
-            self.end_date = self.static_readings[self.TIMESTAMP].max()
+            # Clean the readings
+            print("Cleaning static sensor readings...")
+            self.static_readings = self.clean_radiation_data(self.static_readings)
             
-            print("Data loaded successfully")
+            print("\nCleaning mobile sensor readings...")
+            self.mobile_readings = self.clean_radiation_data(self.mobile_readings)
+            
+            # Set the time range from cleaned data
+            self.start_date = min(
+                self.static_readings[self.TIMESTAMP].min(),
+                self.mobile_readings[self.TIMESTAMP].min()
+            )
+            self.end_date = max(
+                self.static_readings[self.TIMESTAMP].max(),
+                self.mobile_readings[self.TIMESTAMP].max()
+            )
+            
+            print("\nData loaded and cleaned successfully")
             return True
             
         except Exception as e:

@@ -156,15 +156,13 @@ def create_affected_areas_card():
                     dcc.RangeSlider(
                         id='radiation-threshold',
                         min=0,
-                        max=2000,
-                        step=100,
-                        value=[500, 1000],  # Default range
+                        max=100,
+                        step=10,
+                        value=[50, 60],  # Default range
                         marks={
                             0: '0',
-                            500: '500',
-                            1000: '1000',
-                            1500: '1500',
-                            2000: '2000'
+                            50: '50',
+                            100: '100'
                         },
                         className="mb-4",
                         tooltip={"placement": "bottom", "always_visible": True}
@@ -176,7 +174,6 @@ def create_affected_areas_card():
                     # Affected areas map
                     dcc.Graph(
                         id='affected-areas-map',
-                        style={'height': '50vh'},
                         config={'displayModeBar': True}
                     ),
                 ], width=12),
@@ -199,7 +196,6 @@ def create_coverage_analysis_card():
                     # Simple map showing data coverage
                     dcc.Graph(
                         id='coverage-map',
-                        style={'height': '70vh'},
                         config={'displayModeBar': True}
                     ),
                 ], width=12),
