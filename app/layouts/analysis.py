@@ -89,32 +89,8 @@ def create_analysis_layout(data_processor):
                         
                         # Timeline Controls
                         html.Div([
-                            # Playback Controls
-                            # dbc.ButtonGroup([
-                            #     dbc.Button("⏮", id="first-frame", n_clicks=0, className="me-1"),
-                            #     dbc.Button("⏪", id="prev-frame", n_clicks=0, className="me-1"),
-                            #     dbc.Button(
-                            #         html.I(className="fas fa-play"), 
-                            #         id="playpause-button",
-                            #         n_clicks=0,
-                            #         className="me-1"
-                            #     ),
-                            #     dbc.Button("⏩", id="next-frame", n_clicks=0, className="me-1"),
-                            #     dbc.Button("⏭", id="last-frame", n_clicks=0),
-                            # ], className="mb-3 mt-3 d-flex justify-content-center"),
                             
-                            # Timeline Slider with Marks
-                            # dcc.Slider(
-                            #     id='time-slider',
-                            #     min=0,
-                            #     max=100,
-                            #     step=1,
-                            #     value=0,
-                            #     marks={},  # Will be updated by callback
-                            #     tooltip={"placement": "bottom", "always_visible": True}
-                            # ),
-                            
-                            # Animation Speed Control
+                       # Animation Speed Control
                             dbc.Row([
                                 dbc.Col([
                                     html.Label("Animation Speed:", className="fw-bold mt-3 mb-2"),

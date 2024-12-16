@@ -126,7 +126,7 @@ class MapVisualizer:
                 zoom=zoom
             ),
             margin=dict(l=0, r=0, t=0, b=0),
-            height=700,
+            height=750,
             showlegend=True,
             legend=dict(
                 yanchor="top",
@@ -304,7 +304,22 @@ class MapVisualizer:
                         z=frame_data['mean'],
                         radius=75,
                         colorscale='Viridis',
-                        name=f'{sensor_type.title()} Radiation',
+                        name=f'{sensor_type.title()} Radiation Level',
+                        hovertemplate=(
+                            "<b>Radiation Level</b><br>" +
+                            "Value: %{z:.2f} cpm<br>" +
+                            "Lat: %{lat:.4f}<br>" +
+                            "Lon: %{lon:.4f}<extra></extra>"
+                        ),
+                        colorbar=dict(
+                            title=dict(
+                                text='Radiation Level (cpm)',
+                                side='right'
+                            ),
+                            thickness=15,
+                            len=0.7,
+                            tickformat='.1f'
+                        ),
                         opacity=0.7,
                         zmin=time_groups['mean'].min(),
                         zmax=time_groups['mean'].max()
@@ -326,36 +341,48 @@ class MapVisualizer:
             fig.update_layout(
                 updatemenus=[{
                     'type': 'buttons',
-                    'showactive': True,
+                    'direction': 'left',  # Align buttons horizontally
+                    'showactive': True,  
+                    'x': 0.1,
+                    'y': 1.2,
+                    'pad': {'r': 10, 'l': 10, 't': 0, 'b': 0},  # Add padding between buttons
                     'buttons': [
                         {
-                            'label': 'Play',
-                            'method': 'animate',
                             'args': [None, {
                                 'frame': {'duration': frame_duration, 'redraw': True},
                                 'fromcurrent': True,
                                 'transition': {'duration': 30}
-                            }]
+                            }],
+                            'label': '▶️',  # Unicode play symbol
+                            'method': 'animate',
+                            'visible': True
                         },
                         {
-                            'label': '⏸',
-                            'method': 'animate',
                             'args': [[None], {
                                 'frame': {'duration': 0, 'redraw': False},
                                 'mode': 'immediate',
                                 'transition': {'duration': 0}
-                            }]
+                            }],
+                            'label': '⏸️',  # Unicode pause symbol
+                            'method': 'animate',
+                            'visible': True
                         }
-                    ],
-                    'x': 0.1,
-                    'y': 1.1
+                    ]
                 }],
+                # Improved slider styling
                 sliders=[{
                     'currentvalue': {
                         'prefix': 'Time: ',
                         'visible': True,
-                        'xanchor': 'right'
+                        'xanchor': 'right',
+                        'font': {'size': 14, 'color': '#666'}
                     },
+                    'pad': {'t': 0, 'b':10},  # Add padding above slider
+                    'len': 0.9,  # Make slider longer
+                    'x': 0.05,  # Align with buttons
+                    'xanchor': 'left',
+                    'y': 1.17,  # Position below buttons
+                    'yanchor': 'top',
                     'steps': [{
                         'args': [[f.name], {
                             'frame': {'duration': 0, 'redraw': True},
@@ -363,10 +390,14 @@ class MapVisualizer:
                             'transition': {'duration': 0}
                         }],
                         'label': f.name,
-                        'method': 'animate'
-                    } for f in frames]
+                        'method': 'animate',
+                        'visible': True
+                    } for f in frames],
+                    'transition': {'duration': 300, 'easing': 'cubic-in-out'}
                 }]
             )
+            
+            
             
             return fig
             
