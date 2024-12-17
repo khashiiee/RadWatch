@@ -1,103 +1,100 @@
-# app/callbacks/analysis_callbacks.py
+# # app/callbacks/analysis_callbacks.py
 from dash.dependencies import Input, Output, State
 from dash import callback_context
 import pandas as pd
 import json
+from layouts.overview import create_overview_layout
+from layouts.analysis import create_analysis_layout  # Add this import
+from utils.mapping import MapVisualizer
+from utils.data_processing import DataProcessor
+from main import app
 
-# Initialize timeline data
+
 @app.callback(
-    [Output('time-slider', 'marks'),
-     Output('time-slider', 'max'),
-     Output('timeline-data', 'data')],
-    [Input('time-aggregation', 'value'),
+    [Output('analysis-map', 'figure'),
+     Output('time-period-stats', 'children')],
+    [Input('analysis-layers', 'value'),
      Input('analysis-date-range', 'start_date'),
-     Input('analysis-date-range', 'end_date')]
+     Input('analysis-date-range', 'end_date'),
+     Input('time-aggregation', 'value'),
+     Input('animation-speed', 'value')]
 )
-def update_timeline(time_step, start_date, end_date):
-    if not all([time_step, start_date, end_date]):
-        return {}, 0, []
+def update_analysis_view(active_layers, start_date, end_date, time_agg, animation_speed):
+    print("\n=== Analysis View Update ===")
+    try:
+        # Initialize map
+        map_viz = MapVisualizer()
+        fig = map_viz.create_base_map(active_layers=active_layers)
+        
+        if active_layers:
+            # Filter data by time range
+            static_data = data_processor.filter_time_range(
+                data_processor.static_readings, 
+                start_date, 
+                end_date
+            )
+            mobile_data = data_processor.filter_time_range(
+                data_processor.mobile_readings, 
+                start_date, 
+                end_date
+            )
+            
+            # Create animated visualization
+            if 'static' in active_layers or 'static_heatmap' in active_layers:
+                fig = map_viz.add_animated_radiation_data(
+                    fig, 
+                    static_data,
+                    data_processor.static_sensors,
+                    'static',
+                    time_agg,
+                    animation_speed,
+                    active_layers
+                )
+                
+            if 'mobile' in active_layers or 'mobile_heatmap' in active_layers:
+                fig = map_viz.add_animated_radiation_data(
+                    fig,
+                    mobile_data,
+                    None,  # Mobile sensors have coordinates in readings
+                    'mobile',
+                    time_agg,
+                    animation_speed,
+                    active_layers
+                )
+            
+            # Calculate statistics
+            stats = data_processor.calculate_period_statistics(static_data, mobile_data)
+            stats_display = create_stats_display(stats)
+        else:
+            stats_display = "No layers selected"
+        
+        return fig, stats_display
+        
+    except Exception as e:
+        print(f"ERROR in analysis view: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        raise
 
-    # Generate time steps
-    date_range = pd.date_range(start=start_date, end=end_date, freq=time_step)
-    max_steps = len(date_range) - 1
-
-    # Create marks for the slider
-    marks = {}
-    for i, timestamp in enumerate(date_range):
-        if i % max(1, len(date_range) // 10) == 0:  # Show ~10 marks
-            marks[i] = timestamp.strftime('%m-%d %H:%M')
-
-    # Store full timeline data
-    timeline_data = [ts.strftime('%Y-%m-%d %H:%M') for ts in date_range]
-
-    return marks, max_steps, timeline_data
-
-# Handle play/pause and animation
-@app.callback(
-    [Output('animation-interval', 'disabled'),
-     Output('animation-state', 'data'),
-     Output('playpause-button', 'children')],
-    [Input('playpause-button', 'n_clicks')],
-    [State('animation-state', 'data')]
-)
-def toggle_animation(n_clicks, animation_state):
-    if n_clicks is None:
-        return True, {'is_playing': False}, html.I(className="fas fa-play")
-
-    is_playing = not animation_state['is_playing']
-    return (not is_playing, 
-            {'is_playing': is_playing},
-            html.I(className="fas fa-pause") if is_playing else html.I(className="fas fa-play"))
-
-# Update slider position
-@app.callback(
-    Output('time-slider', 'value'),
-    [Input('animation-interval', 'n_intervals'),
-     Input('next-frame', 'n_clicks'),
-     Input('prev-frame', 'n_clicks'),
-     Input('first-frame', 'n_clicks'),
-     Input('last-frame', 'n_clicks')],
-    [State('time-slider', 'value'),
-     State('time-slider', 'max'),
-     State('animation-state', 'data'),
-     State('animation-speed', 'value')]
-)
-def update_slider_position(intervals, next_click, prev_click, first_click, last_click, 
-                         current_value, max_value, animation_state, speed):
-    ctx = callback_context
-    if not ctx.triggered:
-        return 0
-
-    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-    if trigger_id == 'animation-interval' and animation_state['is_playing']:
-        next_value = current_value + 1
-        return 0 if next_value > max_value else next_value
-    elif trigger_id == 'next-frame':
-        return min(current_value + 1, max_value)
-    elif trigger_id == 'prev-frame':
-        return max(current_value - 1, 0)
-    elif trigger_id == 'first-frame':
-        return 0
-    elif trigger_id == 'last-frame':
-        return max_value
-
-    return current_value
-
-# Update timestamp display
-@app.callback(
-    Output('current-timestamp', 'children'),
-    [Input('time-slider', 'value'),
-     Input('timeline-data', 'data')]
-)
-def update_timestamp_display(slider_value, timeline_data):
-    if not timeline_data or slider_value is None:
-        return "Select time period"
-
-    if 0 <= slider_value < len(timeline_data):
-        return f"Current Time: {timeline_data[slider_value]}"
-    return "No data available"
-
+def create_stats_display(stats):
+    """Create HTML elements for statistics display"""
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.H5("Static Sensors"),
+                html.P(f"Average Radiation: {stats['static_mean']:.2f} cpm"),
+                html.P(f"Max Radiation: {stats['static_max']:.2f} cpm"),
+                html.P(f"Number of Readings: {stats['num_static_readings']:,}")
+            ], width=6),
+            dbc.Col([
+                html.H5("Mobile Sensors"),
+                html.P(f"Average Radiation: {stats['mobile_mean']:.2f} cpm"),
+                html.P(f"Max Radiation: {stats['mobile_max']:.2f} cpm"),
+                html.P(f"Number of Readings: {stats['num_mobile_readings']:,}"),
+                html.P(f"Active Sensors: {stats['unique_mobile_sensors']}")
+            ], width=6)
+        ])
+    ])
 
 @app.callback(
     [Output('affected-areas-map', 'figure'),
@@ -106,8 +103,8 @@ def update_timestamp_display(slider_value, timeline_data):
      Input('analysis-date-range', 'start_date'),
      Input('analysis-date-range', 'end_date')]
 )
-def update_affected_areas_analysis(threshold, start_date, end_date):
-    """Update the affected areas map and statistics based on the threshold"""
+def update_affected_areas_analysis(threshold_range, start_date, end_date):
+    """Update the affected areas map and statistics based on the threshold range"""
     # Filter data for the selected time period
     filtered_static = data_processor.filter_time_range(
         data_processor.static_readings,
@@ -124,32 +121,105 @@ def update_affected_areas_analysis(threshold, start_date, end_date):
     map_viz = MapVisualizer()
     fig = map_viz.create_affected_areas_map(
         filtered_mobile,
-        threshold,
+        threshold_range,
         static_sensors=data_processor.static_sensors
     )
     
     # Calculate statistics
-    static_affected = filtered_static[filtered_static[DataProcessor.VALUE] >= threshold]
-    mobile_affected = filtered_mobile[filtered_mobile[DataProcessor.VALUE] >= threshold]
+    min_threshold, max_threshold = threshold_range
+    static_affected = filtered_static[
+        (filtered_static[DataProcessor.VALUE] >= min_threshold) & 
+        (filtered_static[DataProcessor.VALUE] <= max_threshold)
+    ]
+    mobile_affected = filtered_mobile[
+        (filtered_mobile[DataProcessor.VALUE] >= min_threshold) & 
+        (filtered_mobile[DataProcessor.VALUE] <= max_threshold)
+    ]
     
     stats_html = html.Div([
         dbc.Row([
             dbc.Col([
-                html.H5("Affected Areas Statistics"),
+                html.H5(f"Radiation Levels: {min_threshold} - {max_threshold} cpm"),
                 html.P([
                     html.Strong("Static Sensors: "),
                     f"{len(static_affected[DataProcessor.SENSOR_ID].unique())} affected sensors",
                 ]),
                 html.P([
                     html.Strong("Mobile Readings: "),
-                    f"{len(mobile_affected)} readings above threshold",
+                    f"{len(mobile_affected)} readings in range",
                 ]),
                 html.P([
-                    html.Strong("Peak Radiation: "),
-                    f"{max(static_affected[DataProcessor.VALUE].max() if len(static_affected) > 0 else 0, mobile_affected[DataProcessor.VALUE].max() if len(mobile_affected) > 0 else 0):.2f} cpm",
+                    html.Strong("Average Radiation: "),
+                    f"{mobile_affected[DataProcessor.VALUE].mean():.2f} cpm",
                 ]),
             ])
         ])
     ])
     
     return fig, stats_html
+
+
+
+
+# Add info panel toggle callback
+# app/callbacks/analysis_callbacks.py
+
+@app.callback(
+    Output('coverage-map', 'figure'),
+    [Input('analysis-date-range', 'start_date'),
+     Input('analysis-date-range', 'end_date')]
+)
+def update_coverage_analysis(start_date, end_date):
+    """Update the coverage analysis map"""
+    print("\n=== Coverage Analysis Callback Triggered ===")
+    print(f"Date range: {start_date} to {end_date}")
+    
+    try:
+        # Filter data for time period
+        filtered_static = data_processor.filter_time_range(
+            data_processor.static_readings,
+            start_date,
+            end_date
+        )
+        filtered_mobile = data_processor.filter_time_range(
+            data_processor.mobile_readings,
+            start_date,
+            end_date
+        )
+        
+        print(f"\nFiltered data stats:")
+        print(f"Static readings: {len(filtered_static)} records")
+        print(f"Mobile readings: {len(filtered_mobile)} records")
+        
+        # Create map
+        map_viz = MapVisualizer()
+        return map_viz.create_data_coverage_map(
+            filtered_static,
+            filtered_mobile,
+            data_processor.static_sensors
+        )
+        
+    except Exception as e:
+        print(f"ERROR in coverage analysis callback: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        map_viz = MapVisualizer()
+        return map_viz.create_base_map(['boundaries'])
+
+def create_error_message_map(message):
+    """Create a map with an error message overlay"""
+    fig = go.Figure(go.Scattermapbox())
+    fig.update_layout(
+        annotations=[
+            dict(
+                text=f"Error: {message}",
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=16, color="red")
+            )
+        ]
+    )
+    return fig

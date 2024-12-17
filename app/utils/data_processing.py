@@ -319,3 +319,131 @@ class DataProcessor:
                 'coverage_percentage': 0,
                 'neighborhoods_without_data': []
             }
+            
+    # Add these methods to your DataProcessor class
+
+    def calculate_sensor_quality(self, sensor_id=None, readings=None):
+        """
+        Calculate quality score for a sensor or set of readings
+        Args:
+            sensor_id: Optional specific sensor to analyze
+            readings: Optional DataFrame of readings to analyze (if None, uses all readings)
+        """
+        try:
+            if readings is None:
+                if sensor_id:
+                    readings = self.static_readings[
+                        self.static_readings[self.SENSOR_ID] == sensor_id
+                    ]
+                else:
+                    readings = self.static_readings
+
+            # 1. Continuity Score
+            readings = readings.sort_values(self.TIMESTAMP)
+            time_gaps = readings[self.TIMESTAMP].diff()
+            expected_gap = pd.Timedelta(minutes=1)
+            continuity_score = (time_gaps <= expected_gap * 2).mean() * 100
+
+            # 2. Stability Score
+            values = readings[self.VALUE]
+            rolling_std = values.rolling(window=60, min_periods=1).std()
+            baseline_std = values.iloc[:min(len(values), 24*60)].std()
+            stability_violations = (rolling_std > baseline_std * 2).mean()
+            stability_score = 100 * (1 - stability_violations)
+
+            # 3. Anomaly Score
+            rolling_mean = values.rolling(window=60, min_periods=1).mean()
+            baseline_mean = values.iloc[:min(len(values), 24*60)].mean()
+            level_shifts = (abs(rolling_mean - baseline_mean) > baseline_std * 3).mean()
+            anomaly_score = 100 * (1 - level_shifts)
+
+            # Combined score
+            quality_score = (
+                0.4 * continuity_score +
+                0.4 * stability_score +
+                0.2 * anomaly_score
+            )
+
+            # Warnings
+            warnings = []
+            if continuity_score < 95:
+                warnings.append(f"Data gaps detected (continuity: {continuity_score:.1f}%)")
+            if stability_score < 80:
+                warnings.append(f"High variability (stability: {stability_score:.1f}%)")
+            if anomaly_score < 80:
+                warnings.append(f"Significant level shifts detected (anomaly score: {anomaly_score:.1f}%)")
+
+            quality_desc = "Excellent" if quality_score >= 90 else \
+                        "Good" if quality_score >= 75 else \
+                        "Fair" if quality_score >= 60 else "Poor"
+
+            return {
+                'score': quality_score,
+                'continuity': continuity_score,
+                'stability': stability_score,
+                'anomaly': anomaly_score,
+                'description': quality_desc,
+                'warnings': warnings
+            }
+
+        except Exception as e:
+            print(f"Error calculating quality score: {str(e)}")
+            return None
+
+    def get_raw_data_insights(self, sensor_id=None):
+        """
+        Generate insights about raw data before and after cleaning
+        Args:
+            sensor_id: Optional specific sensor to analyze
+        """
+        try:
+            # Load raw data again for comparison
+            raw_readings = pd.read_csv('../data/StaticSensorReadings.csv')
+            raw_readings[self.TIMESTAMP] = pd.to_datetime(raw_readings[self.TIMESTAMP])
+            
+            if sensor_id:
+                raw_readings = raw_readings[raw_readings[self.SENSOR_ID] == sensor_id]
+                clean_readings = self.static_readings[
+                    self.static_readings[self.SENSOR_ID] == sensor_id
+                ]
+            else:
+                clean_readings = self.static_readings
+
+            insights = {
+                'raw_count': len(raw_readings),
+                'cleaned_count': len(clean_readings),
+                'removed_percentage': (1 - len(clean_readings)/len(raw_readings)) * 100,
+                'raw_stats': {
+                    'mean': raw_readings[self.VALUE].mean(),
+                    'std': raw_readings[self.VALUE].std(),
+                    'min': raw_readings[self.VALUE].min(),
+                    'max': raw_readings[self.VALUE].max()
+                },
+                'cleaned_stats': {
+                    'mean': clean_readings[self.VALUE].mean(),
+                    'std': clean_readings[self.VALUE].std(),
+                    'min': clean_readings[self.VALUE].min(),
+                    'max': clean_readings[self.VALUE].max()
+                },
+                'cleaning_impact': []
+            }
+
+            # Analyze impact of cleaning
+            if insights['raw_stats']['max'] > self.MAX_VALID_VALUE:
+                insights['cleaning_impact'].append(
+                    f"Removed values above {self.MAX_VALID_VALUE} cpm"
+                )
+            if insights['raw_stats']['min'] < self.MIN_VALID_VALUE:
+                insights['cleaning_impact'].append(
+                    f"Removed values below {self.MIN_VALID_VALUE} cpm"
+                )
+            if abs(insights['raw_stats']['std'] - insights['cleaned_stats']['std']) > 1:
+                insights['cleaning_impact'].append(
+                    "Significant reduction in data variability after cleaning"
+                )
+
+            return insights
+
+        except Exception as e:
+            print(f"Error generating raw data insights: {str(e)}")
+            return None
