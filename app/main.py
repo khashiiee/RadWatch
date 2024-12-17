@@ -14,6 +14,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 from dash.exceptions import PreventUpdate
 import pandas as pd
+from dash import callback_context
+from datetime import datetime, timedelta
+from callbacks.mobile_callbacks import register_callbacks as register_mobile_callbacks
+from layouts.sensor_comparison import create_comparison_layout
+from callbacks.comparison_callbacks import register_comparison_callbacks
 
 
 
@@ -23,6 +28,8 @@ app = dash.Dash(__name__,
                     'https://use.fontawesome.com/releases/v5.15.4/css/all.css'
                 ],
                 suppress_callback_exceptions=True)
+
+
 
 # Initialize data processor
 data_processor = DataProcessor()
@@ -43,6 +50,7 @@ app.layout = dbc.Container([
                 dbc.Tab(label="Overview", tab_id="tab-overview"),
                 dbc.Tab(label="Static Sensors", tab_id="tab-static"),
                 dbc.Tab(label="Mobile Sensors", tab_id="tab-mobile"),
+                dbc.Tab(label="Sensor Comparison", tab_id="tab-comparison"),
                 dbc.Tab(label="Analysis", tab_id="tab-analysis")
             ], id="tabs", active_tab="tab-overview")
         ])
@@ -53,6 +61,7 @@ app.layout = dbc.Container([
     # Add stores for sharing data between callbacks
     dcc.Store(id='static-sensor-data'),
     dcc.Store(id='mobile-sensor-data'),
+    dcc.Store(id='comparison-data'),
     
     # Add loading spinner
     dcc.Loading(
@@ -62,6 +71,12 @@ app.layout = dbc.Container([
     )
 ], fluid=True)
 
+
+app = register_comparison_callbacks(app, data_processor)  # Add this line
+app = register_mobile_callbacks(app, data_processor)
+
+
+
 # Tab content callback
 @app.callback(
     [Output('tab-content', 'children'),
@@ -69,6 +84,7 @@ app.layout = dbc.Container([
     Input('tabs', 'active_tab')
 )
 def render_tab_content(active_tab):
+    """Route to the appropriate layout based on selected tab"""
     try:
         if active_tab == "tab-overview":
             return create_overview_layout(data_processor), ""
@@ -76,6 +92,8 @@ def render_tab_content(active_tab):
             return create_static_sensors_layout(data_processor), ""
         elif active_tab == "tab-mobile":
             return create_mobile_sensors_layout(data_processor), ""
+        elif active_tab == "tab-comparison":
+            return create_comparison_layout(data_processor), ""
         elif active_tab == "tab-analysis":
             return create_analysis_layout(data_processor), ""
         return "No content", ""
@@ -84,8 +102,7 @@ def render_tab_content(active_tab):
         return html.Div([
             html.H4("Error Loading Content"),
             html.P(f"An error occurred: {str(e)}")
-        ]), ""
-
+        ]),
 # Overview map callback (keep existing implementation)
 @app.callback(
     Output('sensor-map', 'figure'),
@@ -657,6 +674,9 @@ def update_temporal_patterns(pattern_type):
     
 # Mobile sensors callbacks
 
+
+
+
 # Analysis map callback
 @app.callback(
     [Output('analysis-map', 'figure'),
@@ -809,11 +829,15 @@ def update_affected_areas_analysis(threshold_range, start_date, end_date):
 
 
 
+
+
+
+
 # Add info panel toggle callback
 # app/callbacks/analysis_callbacks.py
 
 @app.callback(
-    Output('coverage-map', 'figure'),
+    Output('analysis-coverage-map', 'figure'),
     [Input('analysis-date-range', 'start_date'),
      Input('analysis-date-range', 'end_date')]
 )

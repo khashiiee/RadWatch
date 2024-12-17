@@ -195,7 +195,7 @@ def create_coverage_analysis_card():
                 dbc.Col([
                     # Simple map showing data coverage
                     dcc.Graph(
-                        id='coverage-map',
+                        id='analysis-coverage-map',
                         config={'displayModeBar': True}
                     ),
                 ], width=12),

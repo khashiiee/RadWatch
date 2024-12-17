@@ -59,7 +59,7 @@ def create_static_sensors_layout(data_processor):
                             id='static-time-range',
                             min=0,
                             max=10,
-                            step=1,
+                            step=2,
                             value=[0, 10]
                         )
                     ])

@@ -41,7 +41,7 @@ def create_mobile_sensors_layout(data_processor):
 
         # Second row - Movement tracking
        dbc.Row([
-            dbc.Col([
+            # dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
                         html.H5("Vehicle Movement Tracking"),
@@ -62,62 +62,65 @@ def create_mobile_sensors_layout(data_processor):
                         )
                     ])
                 ])
-            ], width=8),
+            # ], width=8),
             
             
             # Right column - Vehicle stats
-           dbc.Col([
-                dbc.Card([
+        #    dbc.Col([
+        #         dbc.Card([
+        #             dbc.CardHeader("Vehicle Statistics"),
+        #             dbc.CardBody([
+        #                 dcc.Graph(id='mobile-time-series'),
+        #                 html.Div(id='mobile-sensor-stats')
+        #             ])
+        #         ])
+        #     ], width=4)
+        ], className="mb-4"),
+       
+        dbc.Card([
                     dbc.CardHeader("Vehicle Statistics"),
                     dbc.CardBody([
                         dcc.Graph(id='mobile-time-series'),
                         html.Div(id='mobile-sensor-stats')
                     ])
-                ])
-            ], width=4)
-        ], className="mb-4"),
+                ]),
 
         # Third row - Coverage and comparison
-        dbc.Row([
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader([
-                        html.H5("Coverage Analysis"),
-                        dbc.RadioItems(
-                            id='coverage-metric',
-                            options=[
-                                {'label': 'Time Coverage', 'value': 'time'},
-                                {'label': 'Spatial Coverage', 'value': 'spatial'},
-                                {'label': 'Data Density', 'value': 'density'}
-                            ],
-                            value='spatial',
-                            inline=True
-                        )
-                    ]),
-                    dbc.CardBody([
-                        dcc.Graph(id='coverage-map')
-                    ])
-                ])
-            ], width=6),
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader([
-                        html.H5("Static vs Mobile Comparison"),
-                        dbc.RadioItems(
-                            id='comparison-type',
-                            options=[
-                                {'label': 'Radiation Levels', 'value': 'levels'},
-                                {'label': 'Uncertainty', 'value': 'uncertainty'},
-                                {'label': 'Coverage', 'value': 'coverage'}
-                            ],
-                            value='levels',
-                            inline=True
-                        )
-                    ]),
-                    dbc.CardBody([
-                        dcc.Graph(id='sensor-comparison')
-                    ])
-                ])
-            ], width=6)
-        ])
+        # dbc.Card([
+        #     dbc.CardHeader([
+        #         html.H5("Coverage Analysis"),
+        #         dbc.RadioItems(
+        #             id='mobile-coverage-metric',  # Updated ID
+        #             options=[
+        #                 {'label': 'Time Coverage', 'value': 'time'},
+        #                 {'label': 'Spatial Coverage', 'value': 'spatial'},
+        #                 {'label': 'Data Density', 'value': 'density'}
+        #             ],
+        #             value='spatial',
+        #             inline=True
+        #         )
+        #     ]),
+        #     dbc.CardBody([
+        #         dcc.Graph(id='mobile-coverage-display')  # Updated ID
+        #     ])
+        # ], className="mb-4"),
+        # # Comparison Card
+        # dbc.Card([
+        #     dbc.CardHeader([
+        #         html.H5("Static vs Mobile Comparison"),
+        #         dbc.RadioItems(
+        #             id='mobile-comparison-type',  # Updated ID
+        #             options=[
+        #                 {'label': 'Radiation Levels', 'value': 'levels'},
+        #                 {'label': 'Uncertainty', 'value': 'uncertainty'},
+        #                 {'label': 'Coverage', 'value': 'coverage'}
+        #             ],
+        #             value='levels',
+        #             inline=True
+        #         )
+        #     ]),
+        #     dbc.CardBody([
+        #         dcc.Graph(id='mobile-comparison')  # Updated ID
+        #     ])
+        # ])
     ], fluid=True)
